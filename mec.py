@@ -6,20 +6,12 @@
 import requests
 from requests.auth import HTTPBasicAuth
 import json
-try:
-	from ConfigParser import SafeConfigParser
-except:
-	from configparser import SafeConfigParser
+from configparser import ConfigParser
 from venus_meter import VenusMeter
 
 from dbus.mainloop.glib import DBusGMainLoop
-import gobject
-try:
-	import gobject
-	from gobject import idle_add
-except:
-	from gi.repository import GObject as gobject
-	from gi.repository.GObject import idle_add#
+from gi.repository import GLib as glib
+from gi.repository.GLib import idle_add
 
 import dbus
 import dbus.service
@@ -71,7 +63,7 @@ def push_statistics() :
 
 
 def read_settings() :
-	parser = SafeConfigParser()
+	parser = ConfigParser()
 	parser.read('mec.ini')
 
 	Mec.ip = parser.get('MEC', 'ip')
@@ -258,8 +250,7 @@ try:
 	update_thread = threading.Thread(target=mec_update_cyclic, args=(run_event,))
 	update_thread.start()
 
-	gobject.threads_init()
-	mainloop = gobject.MainLoop()
+	mainloop = glib.MainLoop()
 	mainloop.run()
 
 except (KeyboardInterrupt, SystemExit):
