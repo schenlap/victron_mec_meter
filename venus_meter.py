@@ -72,13 +72,17 @@ class VenusMeter :
 		self.dbusservice.add_path('/Mgmt/ProcessVersion', self.pversion)
 		self.dbusservice.add_path('/Mgmt/Connection', self.connection) # todo
 		self.dbusservice.add_path('/DeviceInstance', self.instance)
-		self.dbusservice.add_path('/ProductId', 0xFFFF) # 0xB012 ?
+		self.dbusservice.add_path('/ProductId', 0xB023) # 0xB012 ?
 		self.dbusservice.add_path('/ProductName', self.product)
+		self.dbusservice.add_path('/DeviceType', 345)
 		#self.dbusservice.add_path('/CustomName', "PLC Mec meter")
 		self.dbusservice.add_path('/FirmwareVersion', self.firmwarev)
 		self.dbusservice.add_path('/Serial', self.serial)
+		self.dbusservice.add_path('/Role', 'grid')
+		self.dbusservice.add_path('/Position', 0)
 		self.dbusservice.add_path('/Connected', 1, writeable=True)
 		self.dbusservice.add_path('/ErrorCode', '(0) No Error')
+		self.dbusservice.add_path('/UpdateIndex', 0, writeable=True)
 
 		_kwh = lambda p, v: (str(v) + 'KWh')
 		_a = lambda p, v: (str(v) + 'A')

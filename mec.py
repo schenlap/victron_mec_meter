@@ -45,6 +45,19 @@ class Mec:
 	intervall = []
 	max_retries = 10
 
+class Vz:
+	ip = []
+	stats = DevStatistics
+	uuid_import = []
+	uuid_export = []
+
+class MeterConfig:
+	NONE = 0
+	VZ_PUSH = 1
+	MEC = 2
+
+meterconfig = MeterConfig.NONE
+
 global demo
 demo = 0
 global mec_is_init
@@ -53,25 +66,36 @@ global dev_state
 dev_state = DevState.WaitForDevice
 
 def push_statistics() :
-	global mec
+	global meter
 
-	mec.set('/stats/connection_ok', Mec.stats.connection_ok)
-	mec.set('/stats/connection_error', Mec.stats.connection_ko)
-	mec.set('/stats/last_connection_errors', Mec.stats.last_connection_errors)
-	mec.set('/stats/parse_error', Mec.stats.parse_error)
-	mec.set('/stats/reconnect', Mec.stats.reconnect)
+	meter.set('/stats/connection_ok', Mec.stats.connection_ok)
+	meter.set('/stats/connection_error', Mec.stats.connection_ko)
+	meter.set('/stats/last_connection_errors', Mec.stats.last_connection_errors)
+	meter.set('/stats/parse_error', Mec.stats.parse_error)
+	meter.set('/stats/reconnect', Mec.stats.reconnect)
 
 
 def read_settings() :
+	global meterconfig
 	parser = ConfigParser()
-	parser.read('mec.ini')
+	parser.read('meter.ini')
 
-	Mec.ip = parser.get('MEC', 'ip')
-	Mec.url = parser.get('MEC', 'url')
-	Mec.statusurl = parser.get('MEC', 'statusurl')
-	Mec.user = parser.get('MEC', 'username')
-	Mec.password = parser.get('MEC', 'password')
-	Mec.intervall = float(parser.get('MEC', 'intervall'))
+	if parser.has_section("VOLKSZAEHLER"):
+		Vz.ip = parser.get('VOLKSZAEHLER', 'ip')
+		Vz.uuid_import = parser.get('VOLKSZAEHLER', 'uuid_import')
+		Vz.uuid_export = parser.get('VOLKSZAEHLER', 'uuid_export')
+		meterconfig = MeterConfig.VZ_PUSH
+
+	elif parser.has_section("MEC"):
+		Mec.ip = parser.get('MEC', 'ip')
+		Mec.url = parser.get('MEC', 'url')
+		Mec.statusurl = parser.get('MEC', 'statusurl')
+		Mec.user = parser.get('MEC', 'username')
+		Mec.password = parser.get('MEC', 'password')
+		Mec.intervall = float(parser.get('MEC', 'intervall'))
+		meterconfig = MeterConfig.MEC
+	else:
+		raise Exception("no valid config found")
 
 def mec_read_example(filename) :
 	with open(filename) as f:
@@ -80,44 +104,44 @@ def mec_read_example(filename) :
 	return data
 
 def mec_parse_data( data ) :
-	global mec, mec_is_init
+	global meter, mec_is_init
 
 	# read same variables only the first time
 	if mec_is_init == 0:
-		#mec.set('/ProductName', str(jsonstr['hardware']))
+		#meter.set('/ProductName', str(jsonstr['hardware']))
 		mec_is_init = 1
 
 	time = data['TIME']
 	if Mec.stats.last_time == time:
-		mec.inc('/stats/repeated_values')
-		mec.inc('/stats/last_repeated_values')
+		meter.inc('/stats/repeated_values')
+		meter.inc('/stats/last_repeated_values')
 		print('got repeated value')
 	else:
 		Mec.stats.last_time = time
-		mec.set('/stats/last_repeated_values', 0)
+		meter.set('/stats/last_repeated_values', 0)
 
-		mec.set('/Ac/Power', (data['PT']))
-		mec.set('/Ac/Current', (data['IN0']), 1)
-		mec.set('/Ac/Voltage', (data['VT']))
-		mec.set('/Ac/L1/Current', (data['IA']), 1)
-		mec.set('/Ac/L1/Voltage', (data['VA']))
-		mec.set('/Ac/L1/Power', (data['PA']))
-		mec.set('/Ac/L2/Current', (data['IB']), 1)
-		mec.set('/Ac/L2/Voltage', (data['VB']))
-		mec.set('/Ac/L2/Power', (data['PB']))
-		mec.set('/Ac/L3/Current', (data['IC']), 1)
-		mec.set('/Ac/L3/Voltage', (data['VC']))
-		mec.set('/Ac/L3/Power', (data['PC']))
+		meter.set('/Ac/Power', (data['PT']))
+		meter.set('/Ac/Current', (data['IN0']), 1)
+		meter.set('/Ac/Voltage', (data['VT']))
+		meter.set('/Ac/L1/Current', (data['IA']), 1)
+		meter.set('/Ac/L1/Voltage', (data['VA']))
+		meter.set('/Ac/L1/Power', (data['PA']))
+		meter.set('/Ac/L2/Current', (data['IB']), 1)
+		meter.set('/Ac/L2/Voltage', (data['VB']))
+		meter.set('/Ac/L2/Power', (data['PB']))
+		meter.set('/Ac/L3/Current', (data['IC']), 1)
+		meter.set('/Ac/L3/Voltage', (data['VC']))
+		meter.set('/Ac/L3/Power', (data['PC']))
 
-		mec.set('/Ac/L1/Energy/Forward', (float(data['EFAA'])/1000), 2)
-		mec.set('/Ac/L1/Energy/Reverse', (float(data['ERAA'])/1000), 2)
-		mec.set('/Ac/L2/Energy/Forward', (float(data['EFAB'])/1000), 2)
-		mec.set('/Ac/L2/Energy/Reverse', (float(data['ERAB'])/1000), 2)
-		mec.set('/Ac/L3/Energy/Forward', (float(data['EFAC'])/1000), 2)
-		mec.set('/Ac/L3/Energy/Reverse', (float(data['ERAC'])/1000), 2)
+		meter.set('/Ac/L1/Energy/Forward', (float(data['EFAA'])/1000), 2)
+		meter.set('/Ac/L1/Energy/Reverse', (float(data['ERAA'])/1000), 2)
+		meter.set('/Ac/L2/Energy/Forward', (float(data['EFAB'])/1000), 2)
+		meter.set('/Ac/L2/Energy/Reverse', (float(data['ERAB'])/1000), 2)
+		meter.set('/Ac/L3/Energy/Forward', (float(data['EFAC'])/1000), 2)
+		meter.set('/Ac/L3/Energy/Reverse', (float(data['ERAC'])/1000), 2)
 
-		mec.set('/Ac/Energy/Forward', (float(data['EFAT'])/1000), 2)
-		mec.set('/Ac/Energy/Reverse', (float(data['ERAT'])/1000), 2)
+		meter.set('/Ac/Energy/Forward', (float(data['EFAT'])/1000), 2)
+		meter.set('/Ac/Energy/Reverse', (float(data['ERAT'])/1000), 2)
 
 		powertotal = data['PT']
 		print("++++++++++")
@@ -135,9 +159,9 @@ def mec_data_read_cb( jsonstr ) :
 	return
 
 def mec_status_read_cb( jsonstr, init) :
-	global mec
+	global meter
 	if init:
-		mec = VenusMeter('mec_tcp_50','tcp:' + Mec.ip, 50,'0',  str(jsonstr['hardware']), str(jsonstr['software']),'0.1')
+		meter = VenusMeter('mec_tcp_50','tcp:' + Mec.ip, 50,'0',  str(jsonstr['hardware']), str(jsonstr['software']),'0.1')
 	return
 
 def mec_read_data() :
@@ -205,23 +229,23 @@ def mec_read_status(init) :
 	return 0
 
 def mec_update_cyclic(run_event) :
-	global dev_state, mec
+	global dev_state, meter
 
 	while run_event.is_set():
 		print("Thread: doing")
 		if dev_state >= DevState.Connected:
 			push_statistics()
-			intervall = mec.get('/Mgmt/intervall')
+			intervall = meter.get('/Mgmt/intervall')
 		else:
 			intervall = Mec.intervall
 
 		if Mec.stats.last_connection_errors > Mec.max_retries:
-			print('Lost connection to mec, reset')
+			print('Lost connection to meter, reset')
 			dev_state = DevState.Connect
 			Mec.stats.last_connection_errors = 0
 			Mec.stats.reconnect += 1
-			mec.set('/Connected', 0)
-			mec.invalidate()
+			meter.set('/Connected', 0)
+			meter.invalidate()
 
 		if dev_state == DevState.WaitForDevice:
 			if mec_read_status(init=1) == 0:
@@ -229,8 +253,8 @@ def mec_update_cyclic(run_event) :
 		elif dev_state == DevState.Connect:
 			if mec_read_status(init=0) == 0:
 				dev_state = DevState.Connected
-				mec.validate()
-				mec.set('/Connected', 1)
+				meter.validate()
+				meter.set('/Connected', 1)
 		elif dev_state == DevState.Connected:
 			mec_read_data()
 		else:
@@ -239,16 +263,86 @@ def mec_update_cyclic(run_event) :
 		time.sleep(intervall)
 	return
 
+def start_test():
+	vz_push.start_vz_push_receiver(Vz.ip, Vz.uuid_import, Vz.uuid_export)   # - .. export power
+
+def vz_meter_update():
+	e_forward = 10
+	e_backward = 20
+	updateIndex = 0
+	while True:
+		print('dbus meter update')
+		if vz_push.disconnect:
+			meter.set('/Connected', 0)
+		else:
+			meter.set('/Connected', 1)
+		diff = vz_push.value_import - vz_push.value_export + vz_push.value_wp # + .. import
+		v = 230
+		i = diff / v
+		if diff > 0:
+			e_forward = e_forward + diff / 1000 / 3600
+		else:
+			e_backward = e_backward - diff / 1000 / 3600
+		#i_phase = float(i * 1.2)
+		i_phase = i
+		#p_phase = float(diff / 3)
+		p_phase = diff
+		e_forward_phase = e_forward / 3
+		e_backward_phase = e_backward / 3
+
+		meter.set('/Ac/Power', (diff))
+		meter.set('/Ac/Current', i, 1)
+		meter.set('/Ac/Voltage', v)
+		meter.set('/Ac/L1/Current', i_phase, 1)
+		meter.set('/Ac/L1/Voltage', v)
+		meter.set('/Ac/L1/Power', p_phase)
+		#meter.set('/Ac/L2/Current', i_phase, 1)
+		#meter.set('/Ac/L2/Voltage', v)
+		#meter.set('/Ac/L2/Power', p_phase)
+		#meter.set('/Ac/L3/Current', i_phase, 1)
+		#meter.set('/Ac/L3/Voltage', v)
+		#meter.set('/Ac/L3/Power', p_phase)
+	
+		meter.set('/Ac/L1/Energy/Forward', (e_forward_phase), 2)
+		meter.set('/Ac/L1/Energy/Reverse', (e_forward_phase), 2)
+		#meter.set('/Ac/L2/Energy/Forward', (e_forward_phase), 2)
+		#meter.set('/Ac/L2/Energy/Reverse', (e_forward_phase), 2)
+		#meter.set('/Ac/L3/Energy/Forward', (e_forward_phase), 2)
+		#meter.set('/Ac/L3/Energy/Reverse', (e_forward_phase), 2)
+	
+		meter.set('/Ac/Energy/Forward', (e_forward), 2)
+		meter.set('/Ac/Energy/Reverse', (e_forward), 2)
+		meter.set('/UpdateIndex', updateIndex)
+		updateIndex = updateIndex + 1
+		if updateIndex > 255:
+			updateIndex = 0
+		#await asyncio.sleep(1.2)
+		time.sleep(1.2)
+
 DBusGMainLoop(set_as_default=True)
 read_settings()
-print("Using " + Mec.url + " user: " + Mec.user)
+if meterconfig == MeterConfig.VZ_PUSH:
+	print('Using VZ Push Server ' + Vz.ip)
+	meter = VenusMeter('vz_tcp_50','tcp:' + Vz.ip, 50,'0',  'volkszaehler', '2.3.1','0.1')
+	meter.validate()
+	print('start push server')
+	vz_client = threading.Thread(target=start_test)
+	vz_client.start()
+	print('started push server')
+	vz_update = threading.Thread(target=vz_meter_update)
+	vz_update.start()
+	#asyncio.run(vz_meter_update)
+	print('started meter update')
+elif meterconfig == MeterConfig.MEC:
+	print("Using " + Mec.url + " user: " + Mec.user)
 
 try:
 	run_event = threading.Event()
 	run_event.set()
 
-	update_thread = threading.Thread(target=mec_update_cyclic, args=(run_event,))
-	update_thread.start()
+	if meterconfig == MeterConfig.MEC:
+		update_thread = threading.Thread(target=mec_update_cyclic, args=(run_event,))
+		update_thread.start()
 
 	mainloop = glib.MainLoop()
 	mainloop.run()

@@ -15,8 +15,8 @@ uri = [] #"ws://volkszaehler:8082/socket"  # Ersetze dies mit der tatsächlichen
 rest_url = "http://10.0.0.221/rest"  # URL zur Abfrage der Wärmepumpenleistung
 
 # Variablen zum Abfragen aller benötigten Leistungen
-value_export = None
-value_import = None
+value_export = 0
+value_import = 0
 value_wp = 0
 
 # Variablen zum Verfolgen des letzten Empfangs
@@ -66,7 +66,7 @@ async def calculate_difference():
         if value_export is not None and value_import is not None:
             difference = value_import - value_export + value_wp
             logger.info(f"import power: {difference} W")
-            disconnect = True
+            #disconnect = False
         await asyncio.sleep(1)
 
 
