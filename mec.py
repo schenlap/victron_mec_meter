@@ -2,12 +2,13 @@
 # -*- coding: utf-8 -*-
 
 #vi: set autoindent noexpandtab tabstop=4 shiftwidth=4
-
+from enum import Enum
 import requests
 from requests.auth import HTTPBasicAuth
 import json
 from configparser import ConfigParser
 from venus_meter import VenusMeter
+import traceback
 
 from dbus.mainloop.glib import DBusGMainLoop
 from gi.repository import GLib as glib
@@ -46,14 +47,16 @@ class Mec:
 	max_retries = 10
 
 class Vz:
-	ip = []
+	url = []
 	stats = DevStatistics
 	uuid_import = []
 	uuid_export = []
+	intervall = []
+	max_retries = 10
 
 class MeterConfig:
 	NONE = 0
-	VZ_PUSH = 1
+	VZLOGGER = 1
 	MEC = 2
 
 meterconfig = MeterConfig.NONE
@@ -62,8 +65,12 @@ global demo
 demo = 0
 global mec_is_init
 mec_is_init = 0
+global vz_is_init
+vz_is_init = 0
 global dev_state
 dev_state = DevState.WaitForDevice
+global meter
+meter = None
 
 def push_statistics() :
 	global meter
@@ -81,12 +88,15 @@ def read_settings() :
 	parser.read('meter.ini')
 
 	if parser.has_section("VOLKSZAEHLER"):
-		Vz.ip = parser.get('VOLKSZAEHLER', 'ip')
+		print('Using VZLOGGER from meter.ini')
+		Vz.url = parser.get('VOLKSZAEHLER', 'url')
 		Vz.uuid_import = parser.get('VOLKSZAEHLER', 'uuid_import')
 		Vz.uuid_export = parser.get('VOLKSZAEHLER', 'uuid_export')
-		meterconfig = MeterConfig.VZ_PUSH
+		Vz.intervall = float(parser.get('VOLKSZAEHLER', 'intervall'))
+		meterconfig = MeterConfig.VZLOGGER
 
 	elif parser.has_section("MEC"):
+		print('Using MEC from meter.ini')
 		Mec.ip = parser.get('MEC', 'ip')
 		Mec.url = parser.get('MEC', 'url')
 		Mec.statusurl = parser.get('MEC', 'statusurl')
@@ -153,9 +163,70 @@ def mec_parse_data( data ) :
 		print("MEC Status: " + str(data['STATUS']))
 
 		#Mec.stats.parse_error += 1
+def vz_parse_data( data ) :
+	global meter, vz_is_init
+
+	power_import = 0
+	power_export = 0
+
+	# read same variables only the first time
+	if vz_is_init == 0:
+		#meter.set('/ProductName', str(jsonstr['hardware']))
+		vz_is_init = 1
+
+	
+	#time = data['data'][0]['last']
+	val = data['data'][0]
+	time = val['tuples'][0][0]
+
+	print(f'time: {time}')
+	if Vz.stats.last_time == time:
+		meter.inc('/stats/repeated_values')
+		meter.inc('/stats/last_repeated_values')
+		print('got repeated value')
+	else:
+		Vz.stats.last_time = time
+		meter.set('/stats/last_repeated_values', 0)
+
+		uuid_match_nr = 0
+		for dat in data['data']:
+			uuid = dat['uuid']
+			if uuid == Vz.uuid_import:
+				power_import = dat['tuples'][0][1]
+				uuid_match_nr = uuid_match_nr + 1
+			if uuid == Vz.uuid_export:
+				power_export = dat['tuples'][0][1]
+				uuid_match_nr = uuid_match_nr + 1
+		print(f'uuid matched: {uuid_match_nr}')
+		power = round(power_import - power_export, 1)
+
+		meter.set('/Ac/Power', power, 1)
+		meter.set('/Ac/Current', float(power / 230), 1)
+		meter.set('/Ac/Voltage', 230)
+		meter.set('/Ac/L1/Current', float(power / 230), 1)
+		meter.set('/Ac/L1/Voltage', 230)
+		meter.set('/Ac/L1/Power', power, 1)
+
+		#meter.set('/Ac/L1/Energy/Forward', (float(data['EFAA'])/1000), 2)
+		#meter.set('/Ac/L1/Energy/Reverse', (float(data['ERAA'])/1000), 2)
+
+		#meter.set('/Ac/Energy/Forward', (float(data['EFAT'])/1000), 2)
+		#meter.set('/Ac/Energy/Reverse', (float(data['ERAT'])/1000), 2)
+
+		print("++++++++++")
+		#print("POWER Phase A: " + str(data['PA']) + "W")
+		print("POWER Total: " + str(power) + "W")
+		print("Time: " + str(time) + " ms")
+		#print("MEC Status: " + str(data['STATUS']))
+
+		#Mec.stats.parse_error += 1
 
 def mec_data_read_cb( jsonstr ) :
 	mec_parse_data ( jsonstr )
+	return
+
+def vz_data_read_cb( jsonstr ) :
+	vz_parse_data ( jsonstr )
 	return
 
 def mec_status_read_cb( jsonstr, init) :
@@ -194,6 +265,42 @@ def mec_read_data() :
 		Mec.stats.connection_ok += 1
 		mec_data_read_cb(data)
 		return 0
+	return 0
+
+def vz_read_testconnection() :
+	try:
+		response = requests.get( Vz.url, verify=False, timeout=2)
+		# For successful API call, response code will be 200 (OK)
+		if(response.ok):
+			return 0
+	except (requests.exceptions.HTTPError, requests.exceptions.RequestException):
+		print('Error reading from ' + Vz.url)
+		traceback.print_exc()
+		return 1
+	return 0
+
+def vz_read_data() :
+	try:
+		response = requests.get( Vz.url, verify=False, timeout=2)
+		# For successful API call, response code will be 200 (OK)
+		if(response.ok):
+			#print("code:"+ str(response.status_code))
+			#print("******************")
+			#print("headers:"+ str(response.headers))
+			#print("******************")
+			#print("content text:"+ str(response.text))
+			#print("******************")
+			Vz.stats.connection_ok += 1
+			if Vz.stats.last_connection_errors > 0:
+				Vz.stats.last_connection_errors = 0
+			vz_data_read_cb( jsonstr=response.json() )
+			return 0
+	except (requests.exceptions.HTTPError, requests.exceptions.RequestException):
+		print('Error reading from ' + Vz.url)
+		traceback.print_exc()
+		Vz.stats.connection_ko += 1
+		Vz.stats.last_connection_errors += 1
+		return 1
 	return 0
 
 def mec_read_status(init) :
@@ -263,8 +370,44 @@ def mec_update_cyclic(run_event) :
 		time.sleep(intervall)
 	return
 
-def start_test():
-	vz_push.start_vz_push_receiver(Vz.ip, Vz.uuid_import, Vz.uuid_export)   # - .. export power
+def vz_update_cyclic(run_event) :
+	global dev_state, meter
+	meter = VenusMeter('vzlogger','tcp:' + Vz.url, 50,'0',  'RPI', 'vzlogger','0.1')
+
+	while run_event.is_set():
+		print("Thread: doing")
+		if dev_state >= DevState.Connected:
+			push_statistics()
+			intervall = meter.get('/Mgmt/intervall')
+		else:
+			intervall = Vz.intervall
+
+		if Vz.stats.last_connection_errors > Vz.max_retries:
+			print('Lost connection to meter, reset')
+			dev_state = DevState.Connect
+			Vz.stats.last_connection_errors = 0
+			Vz.stats.reconnect += 1
+			meter.set('/Connected', 0)
+			print('Meter is now disconnected')
+			meter.invalidate()
+
+		print(f'dev_state: {dev_state}')
+		if dev_state == DevState.WaitForDevice:
+			if vz_read_testconnection() == 0:
+				dev_state = DevState.Connect
+				meter.validate()
+				meter.set('/Connected', 1)
+				print('Meter is now connected')
+		elif dev_state == DevState.Connect:
+			if vz_read_testconnection() == 0:
+				dev_state = DevState.Connected
+		elif dev_state == DevState.Connected:
+			vz_read_data()
+		else:
+			dev_state = DevState.WaitForDevice
+
+		time.sleep(intervall)
+	return
 
 def vz_meter_update():
 	e_forward = 10
@@ -321,28 +464,22 @@ def vz_meter_update():
 
 DBusGMainLoop(set_as_default=True)
 read_settings()
-if meterconfig == MeterConfig.VZ_PUSH:
-	print('Using VZ Push Server ' + Vz.ip)
-	meter = VenusMeter('vz_tcp_50','tcp:' + Vz.ip, 50,'0',  'volkszaehler', '2.3.1','0.1')
-	meter.validate()
-	print('start push server')
-	vz_client = threading.Thread(target=start_test)
-	vz_client.start()
-	print('started push server')
-	vz_update = threading.Thread(target=vz_meter_update)
-	vz_update.start()
-	#asyncio.run(vz_meter_update)
-	print('started meter update')
-elif meterconfig == MeterConfig.MEC:
-	print("Using " + Mec.url + " user: " + Mec.user)
 
 try:
 	run_event = threading.Event()
 	run_event.set()
 
+	update_thread = None
+
 	if meterconfig == MeterConfig.MEC:
 		update_thread = threading.Thread(target=mec_update_cyclic, args=(run_event,))
-		update_thread.start()
+	elif meterconfig == MeterConfig.VZLOGGER:
+		update_thread = threading.Thread(target=vz_update_cyclic, args=(run_event,))
+	else:
+		raise Exception('No valid vonfig')
+		quit()
+
+	update_thread.start()
 
 	mainloop = glib.MainLoop()
 	mainloop.run()
