@@ -71,6 +71,12 @@ global dev_state
 dev_state = DevState.WaitForDevice
 global meter
 meter = None
+global last_data_time
+last_data_time = 0
+global export_energy
+export_energy = 0
+global import_energy
+import_energy = 0
 
 def push_statistics() :
 	global meter
@@ -165,6 +171,8 @@ def mec_parse_data( data ) :
 		#Mec.stats.parse_error += 1
 def vz_parse_data( data ) :
 	global meter, vz_is_init
+	global last_data_time
+	global export_energy, import_energy
 
 	power_import = 0
 	power_export = 0
@@ -200,6 +208,16 @@ def vz_parse_data( data ) :
 		print(f'uuid matched: {uuid_match_nr}')
 		power = round(power_import - power_export, 1)
 
+		if last_data_time == 0:
+			last_data_time = time
+		else:
+			delta_t = (time - last_data_time) / 1000.0 # s
+			last_data_time = time
+			if power > 0: # import
+				import_energy = import_energy + power * delta_t / 3600 / 1000 # kWh
+			else:
+				export_energy = export_energy - power * delta_t / 3600 / 1000
+
 		meter.set('/Ac/Power', power, 1)
 		meter.set('/Ac/Current', float(power / 230), 1)
 		meter.set('/Ac/Voltage', 230)
@@ -207,11 +225,11 @@ def vz_parse_data( data ) :
 		meter.set('/Ac/L1/Voltage', 230)
 		meter.set('/Ac/L1/Power', power, 1)
 
-		#meter.set('/Ac/L1/Energy/Forward', (float(data['EFAA'])/1000), 2)
-		#meter.set('/Ac/L1/Energy/Reverse', (float(data['ERAA'])/1000), 2)
+		meter.set('/Ac/L1/Energy/Forward', import_energy, 3)
+		meter.set('/Ac/L1/Energy/Reverse', export_energy, 3)
 
-		#meter.set('/Ac/Energy/Forward', (float(data['EFAT'])/1000), 2)
-		#meter.set('/Ac/Energy/Reverse', (float(data['ERAT'])/1000), 2)
+		meter.set('/Ac/Energy/Forward', import_energy, 3)
+		meter.set('/Ac/Energy/Reverse', export_energy, 3)
 
 		print("++++++++++")
 		#print("POWER Phase A: " + str(data['PA']) + "W")
