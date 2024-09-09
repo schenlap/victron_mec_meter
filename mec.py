@@ -402,7 +402,7 @@ def vz_update_cyclic(run_event) :
 
 		if Vz.stats.last_connection_errors > Vz.max_retries:
 			print('Lost connection to meter, reset')
-			dev_state = DevState.Connect
+			dev_state = DevState.WaitForDevice
 			Vz.stats.last_connection_errors = 0
 			Vz.stats.reconnect += 1
 			meter.set('/Connected', 0)
