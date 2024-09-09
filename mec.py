@@ -212,6 +212,7 @@ def vz_parse_data( data ) :
 			last_data_time = time
 		else:
 			delta_t = (time - last_data_time) / 1000.0 # s
+			print(f"delta_t: {delta_t}")
 			last_data_time = time
 			if power > 0: # import
 				import_energy = import_energy + power * delta_t / 3600 / 1000 # kWh
@@ -230,6 +231,8 @@ def vz_parse_data( data ) :
 
 		meter.set('/Ac/Energy/Forward', import_energy, 3)
 		meter.set('/Ac/Energy/Reverse', export_energy, 3)
+		print(f"import energy: {import_energy}")
+		print(f"export_energy: {export_energy}")
 
 		print("++++++++++")
 		#print("POWER Phase A: " + str(data['PA']) + "W")
@@ -293,7 +296,7 @@ def vz_read_testconnection() :
 			return 0
 	except (requests.exceptions.HTTPError, requests.exceptions.RequestException):
 		print('Error reading from ' + Vz.url)
-		traceback.print_exc()
+		#traceback.print_exc()
 		return 1
 	return 0
 
@@ -315,7 +318,7 @@ def vz_read_data() :
 			return 0
 	except (requests.exceptions.HTTPError, requests.exceptions.RequestException):
 		print('Error reading from ' + Vz.url)
-		traceback.print_exc()
+		#traceback.print_exc()
 		Vz.stats.connection_ko += 1
 		Vz.stats.last_connection_errors += 1
 		return 1
@@ -366,7 +369,7 @@ def mec_update_cyclic(run_event) :
 
 		if Mec.stats.last_connection_errors > Mec.max_retries:
 			print('Lost connection to meter, reset')
-			dev_state = DevState.Connect
+			dev_state = DevState.WaitForDevice
 			Mec.stats.last_connection_errors = 0
 			Mec.stats.reconnect += 1
 			meter.set('/Connected', 0)
@@ -412,12 +415,13 @@ def vz_update_cyclic(run_event) :
 		print(f'dev_state: {dev_state}')
 		if dev_state == DevState.WaitForDevice:
 			if vz_read_testconnection() == 0:
+				print('Meter connection start')
 				dev_state = DevState.Connect
 				meter.validate()
 				meter.set('/Connected', 1)
-				print('Meter is now connected')
 		elif dev_state == DevState.Connect:
 			if vz_read_testconnection() == 0:
+				print('Meter connected')
 				dev_state = DevState.Connected
 		elif dev_state == DevState.Connected:
 			vz_read_data()
