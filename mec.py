@@ -205,8 +205,11 @@ def vz_parse_data( data ) :
 			if uuid == Vz.uuid_export:
 				power_export = dat['tuples'][0][1]
 				uuid_match_nr = uuid_match_nr + 1
+			if uuid == 'heatpump':
+				power_heatpump = dat['tuples'][0][1]
+				print(f'power heatpump: {power_heatpump}')
 		print(f'uuid matched: {uuid_match_nr}')
-		power = round(power_import - power_export, 1)
+		power = round(power_import - power_export + power_heatpump, 1)
 
 		if last_data_time == 0:
 			last_data_time = time
