@@ -121,9 +121,12 @@ def start_vz_push_receiver(ip, uuid_import, uuid_export):
     logger.debug("uuid_export: " + uuid_export)
     logger.info("uri: " + uri)
     print('now start vz client')
+    #vz_client = threading.Thread(target=volkszaehler_client, args=(run_event,))
+    #vz_client.start()
     asyncio.run(volkszaehler_client())
     print('started vz client')
 
 # Ausführung des WebSocket-Clients
 if __name__ == "__main__":
-    asyncio.run(volkszaehler_client())
+    loop = asyncio.get_event_loop()
+    loop.run_until_completed(volkszaehler_client())

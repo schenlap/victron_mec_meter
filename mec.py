@@ -5,6 +5,7 @@
 from enum import Enum
 import requests
 from requests.auth import HTTPBasicAuth
+from requests.exceptions import HTTPError
 import json
 from configparser import ConfigParser
 from venus_meter import VenusMeter
@@ -188,12 +189,15 @@ def vz_parse_data( data ) :
 	time = val['tuples'][0][0]
 
 	print(f'time: {time}')
-	if Vz.stats.last_time == time:
+	#val = 10
+	if Vz.stats.last_time == val:
 		meter.inc('/stats/repeated_values')
 		meter.inc('/stats/last_repeated_values')
-		print('got repeated value')
+		print('** got repeated value **')
+		if meter.get('/stats/last_repeated_values') > 60:
+			raise HTTPError("power stuck value", response=None)
 	else:
-		Vz.stats.last_time = time
+		Vz.stats.last_time = val
 		meter.set('/stats/last_repeated_values', 0)
 
 		uuid_match_nr = 0
@@ -315,9 +319,9 @@ def vz_read_data() :
 			#print("content text:"+ str(response.text))
 			#print("******************")
 			Vz.stats.connection_ok += 1
+			vz_data_read_cb( jsonstr=response.json() )
 			if Vz.stats.last_connection_errors > 0:
 				Vz.stats.last_connection_errors = 0
-			vz_data_read_cb( jsonstr=response.json() )
 			return 0
 	except (requests.exceptions.HTTPError, requests.exceptions.RequestException):
 		print('Error reading from ' + Vz.url)
